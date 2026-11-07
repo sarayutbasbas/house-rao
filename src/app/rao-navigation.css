@@ -1,0 +1,149 @@
+/* Copied from bn-trip app/globals.css: neutral light/dark liquid glass.
+   Adaptations: four HouseRao routes, app dialog stacking, and active brand colour. */
+.app-bottom-navigation {
+  --nav-panel-soft: rgba(235,239,244,.34);
+  --nav-item-color: #3d434e;
+  --nav-glow-rgb: 205,228,255;
+  position: fixed;
+  z-index: 40;
+  bottom: max(8px, calc(env(safe-area-inset-bottom) + 2px));
+  left: 50%;
+  width: min(480px, calc(100vw - 22px));
+  height: 64px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  overflow: visible;
+  background: rgba(255,255,255,.08);
+  pointer-events: none;
+  transform: translateX(-50%);
+  backface-visibility: hidden;
+}
+.app-bottom-navigation-inner {
+  --gx: 50%;
+  --gy: 50%;
+  --ga: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0 auto;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 999px;
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(5,minmax(0,1fr));
+  align-items: start;
+  gap: 6px;
+  overflow: visible;
+  background: var(--nav-panel-soft);
+  box-shadow: 14px 14px 36px rgba(98,111,132,.22), -14px -14px 36px rgba(255,255,255,.55), 0 18px 42px rgba(72,85,106,.14), inset 0 1px rgba(255,255,255,.48);
+  pointer-events: auto;
+  user-select: none;
+}
+.app-bottom-navigation-glow {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  border-radius: 999px;
+  clip-path: inset(0 round 999px);
+  background: radial-gradient(240px 150px at var(--gx) var(--gy), rgba(var(--nav-glow-rgb),var(--ga)), rgba(var(--nav-glow-rgb),0) 74%);
+  pointer-events: none;
+}
+.app-bottom-navigation-indicator {
+  --nav-slide-duration: 380ms;
+  position: absolute;
+  z-index: 1;
+  top: 4px;
+  left: 8px;
+  width: calc((100% - 34px) / 5);
+  height: 56px;
+  border-radius: 999px;
+  overflow: visible;
+  background: rgba(255,255,255,.22);
+  box-shadow: inset 0 1px rgba(255,255,255,.4), 10px 10px 24px rgba(92,105,126,.18), -8px -8px 20px rgba(255,255,255,.56);
+  transition: left var(--nav-slide-duration) cubic-bezier(.18,1.16,.3,1), width var(--nav-slide-duration) cubic-bezier(.18,1.16,.3,1);
+  will-change: left, width;
+  pointer-events: none;
+}
+.codepen-switcher-refract,
+.codepen-switcher-tint {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  border-radius: 999px;
+  pointer-events: none;
+}
+.codepen-switcher-refract { overflow: hidden; }
+.app-bottom-navigation-item {
+  min-width: 0;
+  height: 56px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  position: relative;
+  z-index: 8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--nav-item-color);
+  background: transparent;
+  touch-action: none;
+  user-select: none;
+}
+.app-bottom-navigation-content {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  grid-template-rows: 28px auto;
+  place-content: center;
+  place-items: center;
+  gap: 4px;
+}
+.app-bottom-navigation-item .ios-icon { width: 22px; height: 22px; filter: drop-shadow(0 1px 1px rgba(255,255,255,.92)) drop-shadow(0 2px 4px rgba(11,17,27,.42)); }
+.app-bottom-navigation-item.is-active .ios-icon { width: 22px; height: 22px; }
+.app-bottom-navigation-label {
+  max-width: 100%;
+  overflow: visible;
+  font-size: 9px;
+  font-weight: 750;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+.app-bottom-navigation-item.is-active,
+.app-bottom-navigation-item.is-pass-target { color: var(--primary); }
+.dark .app-bottom-navigation { --nav-panel-soft: rgba(27,25,31,.58); --nav-item-color: #fff; }
+.dark .app-bottom-navigation-inner { backdrop-filter: blur(18px) saturate(125%); box-shadow: 14px 14px 36px rgba(0,0,0,.48), inset 0 1px rgba(255,255,255,.08); }
+.dark .app-bottom-navigation-indicator { background: rgba(72,75,86,.48); backdrop-filter: blur(10px) saturate(135%); }
+.dark .app-bottom-navigation-item { color: var(--nav-item-color); text-shadow: none; }
+.dark .app-bottom-navigation-item .ios-icon { filter: none; }
+.dark .app-bottom-navigation-item.is-active,
+.dark .app-bottom-navigation-item.is-pass-target { color: var(--primary); }
+
+
+/* Stronger neutral separation in light mode so the glass nav does not vanish
+   into white content. */
+html:not(.dark) .app-bottom-navigation {
+  --nav-panel-soft: rgba(205,211,220,.72);
+  --nav-item-color: #303640;
+  background: rgba(198,205,215,.34);
+  filter: drop-shadow(0 12px 22px rgba(49,57,70,.22));
+}
+html:not(.dark) .app-bottom-navigation-inner {
+  border: .5px solid rgba(92,103,120,.22);
+  background: rgba(218,223,230,.78);
+  box-shadow:
+    0 16px 38px rgba(54,63,77,.28),
+    0 5px 14px rgba(77,88,105,.17),
+    inset 0 1px rgba(255,255,255,.62),
+    inset 0 -1px rgba(74,84,100,.12);
+}
+html:not(.dark) .app-bottom-navigation-indicator {
+  background: rgba(244,246,249,.7);
+  box-shadow:
+    inset 0 1px rgba(255,255,255,.88),
+    0 8px 20px rgba(61,71,87,.25),
+    0 1px 5px rgba(44,52,64,.18);
+}
+
+.nav-shopping-badge { display:inline-flex; align-items:center; justify-content:center; min-width:18px; height:18px; padding:0 4px; border-radius:999px; background:#a42e58; color:#fff; font-size:10px; font-weight:700; line-height:1; text-shadow:none; }
+.app-bottom-navigation-item > .nav-shopping-badge { position:absolute; top:2px; left:calc(50% + 6px); z-index:10; pointer-events:none; }

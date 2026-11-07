@@ -1,0 +1,80 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import { randomUUID } from 'node:crypto';
+import dotenv from 'dotenv';
+import { Client } from 'pg';
+import { encode } from 'next-auth/jwt';
+
+// Explicitly targets local Docker only. Fixtures are removed in finally.
+const env = dotenv.parse(fs.readFileSync('.env.docker.local'));
+const connection = new URL(env.DATABASE_URL);
+connection.hostname = '127.0.0.1'; connection.port = '5433';
+const db = new Client({ connectionString: connection.toString() });
+await db.connect();
+const email = `stock-test-${randomUUID()}@example.invalid`;
+const token = await encode({ token: { sub: randomUUID(), email, name: 'Stock test' }, secret: env.AUTH_SECRET, salt: '__Secure-authjs.session-token' });
+const cookie = `__Secure-authjs.session-token=${token}`;
+let houseId;
+async function request(path, body, method = 'POST', status = 200) {
+  const response = await fetch(`http://localhost:8002${path}`, { method, headers: { cookie, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const result = await response.json();
+  assert.equal(response.status, status, `${method} ${path}: ${JSON.stringify(result)}`);
+  return result;
+}
+try {
+  const house = await request('/api/houses', { name: 'Stock integration test' }, 'POST', 201);
+  houseId = house.id;
+  const metadata = { houseId, name: 'นมทดสอบ', unit: 'กล่อง', minimum: 2 };
+  let item = await request('/api/items', { ...metadata, batches: [{ quantity: 2, expiryDate: '2026-12-01' }, { quantity: 3, expiryDate: '2027-01-01' }, { quantity: 1, expiryDate: null }] }, 'POST', 201);
+  const id = item.id;
+  assert.equal(item.quantity, 6); assert.equal(item.expiryDate, '2026-12-01'); assert.equal(item.batches.length, 3);
+  console.log('Create multiple expiry dates: OK');
+  await request(`/api/items/${id}/quantity`, { delta: 1 }, 'POST', 400);
+  await request(`/api/items/${id}`, { expiryDate: '2028-01-01' }, 'PATCH', 400);
+  item = await request(`/api/items/${id}/batches`, { batches: [{ quantity: 4, expiryDate: '2026-11-01' }] }, 'POST', 201);
+  assert.equal(item.quantity, 10); assert.equal(item.expiryDate, '2026-11-01');
+  item = await request(`/api/items/${id}/quantity`, { delta: -5 });
+  assert.equal(item.quantity, 5); assert.equal(item.expiryDate, '2026-12-01');
+  assert.equal(item.batches.find(b => b.expiryDate === '2026-11-01').quantity, 0);
+  assert.equal(item.batches.find(b => b.expiryDate === '2026-12-01').quantity, 1);
+  console.log('Restock and consume earliest expiry across batches: OK');
+  item = await request(`/api/items/${id}/quantity`, { delta: -1, batchId: item.batches.find(b => b.expiryDate === null).id });
+  assert.equal(item.quantity, 4); assert.equal(item.expiryDate, '2026-12-01');
+  item = await request(`/api/items/${id}/quantity`, { delta: -1 });
+  assert.equal(item.expiryDate, '2027-01-01');
+  item = await request(`/api/items/${id}/batches`, { batchId: item.batches.find(b => b.quantity > 0).id, expiryDate: '2026-10-01' }, 'PATCH');
+  assert.equal(item.expiryDate, '2026-10-01');
+  console.log('Specific-batch consumption and date correction: OK');
+  const splitSource = item.batches.find(b => b.quantity > 0);
+  item = await request(`/api/items/${id}/batches`, { batchId: splitSource.id, quantity: 1, expiryDate: '2026-09-01' }, 'PATCH');
+  assert.equal(item.quantity, 3); assert.equal(item.expiryDate, '2026-09-01');
+  assert.equal(item.batches.find(b => b.id === splitSource.id).quantity, 2);
+  await request(`/api/items/${id}/batches`, { batchId: splitSource.id, quantity: 99, expiryDate: null }, 'PATCH', 409);
+  console.log('Split existing quantities by expiry without changing stock total: OK');
+  const beforeCount = item.batches.length;
+  await request(`/api/items/${id}/batches`, { batches: [{ quantity: 999999, expiryDate: null }] }, 'POST', 409);
+  assert.equal(Number((await db.query('select count(*) from item_batches where item_id=$1', [id])).rows[0].count), beforeCount);
+  for (const quantity of [-1, 0, 1.5]) await request(`/api/items/${id}/batches`, { batches: [{ quantity, expiryDate: null }] }, 'POST', 400);
+  await request(`/api/items/${id}/batches`, { batchId: randomUUID(), expiryDate: null }, 'PATCH', 404);
+  console.log('Validation and transaction rollback: OK');
+  const last = await request('/api/items', { ...metadata, name: 'Last unit', batches: [{ quantity: 1, expiryDate: '2026-10-01' }] }, 'POST', 201);
+  const outcomes = await Promise.all([1, 2].map(() => fetch(`http://localhost:8002/api/items/${last.id}/quantity`, { method: 'POST', headers: { cookie, 'Content-Type': 'application/json' }, body: JSON.stringify({ delta: -1 }) }).then(res => res.status)));
+  assert.deepEqual(outcomes.sort(), [200, 409]);
+  const remaining = (await db.query('select quantity, expiry_date from items where id=$1', [last.id])).rows[0];
+  assert.equal(remaining.quantity, 0); assert.equal(remaining.expiry_date, null);
+  console.log('Concurrent requests cannot consume the last unit twice: OK');
+  item = await request(`/api/items/${id}`, { archived: true }, 'PATCH');
+  assert.equal(item.quantity, 0); assert.equal(item.expiryDate, null); assert.ok(item.batches.every(b => b.quantity === 0));
+  item = await request(`/api/items/${id}/batches`, { batches: [{ quantity: 2, expiryDate: '2027-02-01' }] }, 'POST', 201);
+  assert.equal(item.archived, false); assert.equal(item.quantity, 2); assert.equal(item.expiryDate, '2027-02-01');
+  console.log('Finished batches retained; restocking restores inventory: OK');
+  const events = await db.query('select sum(delta)::int as total from stock_events where item_id=$1', [id]);
+  assert.equal(events.rows[0].total, item.quantity);
+  const mismatch = await db.query('select count(*)::int as total from items i where i.house_id=$1 and (i.quantity <> (select coalesce(sum(b.quantity),0) from item_batches b where b.item_id=i.id) or i.expiry_date is distinct from (select min(b.expiry_date) from item_batches b where b.item_id=i.id and b.quantity>0))', [houseId]);
+  assert.equal(mismatch.rows[0].total, 0);
+  console.log('Quantity, expiry and stock-event totals remain consistent: OK');
+} finally {
+  if (houseId) await db.query('delete from houses where id=$1', [houseId]);
+  await db.query('delete from users where email=$1', [email]);
+  await db.end();
+}

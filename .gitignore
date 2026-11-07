@@ -1,0 +1,11 @@
+node_modules
+.next
+.env
+.env.local
+.env.cloudflare.local
+.vercel
+*.tsbuildinfo
+.env*
+!.env.example
+!.env.docker.example
+data/
